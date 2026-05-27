@@ -53,12 +53,14 @@ def _strip_html(html: str) -> str:
 
 def _normalize(job: dict) -> dict:
     company = job.get("careerPageName", "") or job.get("company", {}).get("name", "")
+    is_remote = job.get("isRemoteWork", False) or job.get("workplaceType", "") == "remote"
     return {
         "id": f"gupy_{job.get('id', '')}",
         "title": job.get("name", ""),
         "company": company,
         "location": _build_location(job),
-        "remote": job.get("isRemoteWork", False) or job.get("workplaceType", "") == "remote",
+        "city": "" if is_remote else (job.get("city") or ""),
+        "remote": is_remote,
         "url": job.get("jobUrl", ""),
         "source": "Gupy",
         "type": "corporativa",

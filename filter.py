@@ -33,17 +33,44 @@ def _is_too_old(job: dict) -> bool:
     return False  # sem data alguma → mantém
 
 
+_SP_CAPITAL = {"são paulo", "sao paulo", "sp capital", ""}
+
+# Institutions known to be in SP capital even without explicit city
+_SP_CAPITAL_ORGS = {
+    "usp", "unifesp", "einstein", "fmusp", "fsp", "icesp",
+    "secretaria municipal", "prefeitura de são paulo",
+    "prefeitura municipal de são paulo", "câmara municipal de são paulo",
+    "tribunal de justiça de são paulo", "tj sp",
+}
+
+
 def _is_wrong_location(job: dict) -> bool:
-    """Rejeita vagas presenciais fora de SP/Brasil."""
+    """Rejeita vagas presenciais fora de SP capital."""
     if job.get("remote"):
         return False  # remoto: aceito em qualquer lugar
-    loc = (job.get("location") or "").lower()
-    # Concursos já vêm com "São Paulo, SP" — OK
-    if "são paulo" in loc or "sao paulo" in loc or "sp" in loc:
+
+    city  = (job.get("city") or "").strip().lower()
+    state = (job.get("state") or "").strip().upper()
+    company = (job.get("company") or "").lower()
+
+    # If we know the state and it's not SP → reject
+    if state and state != "SP" and state != "SÃO PAULO":
+        return True
+
+    # No city info → keep (federal agencies, platforms with no geo)
+    if not city or city in ("não informado", ""):
         return False
-    if not loc or loc == "não informado":
-        return False  # sem info de local → mantém
-    return True  # presencial em outro estado → rejeita
+
+    # SP capital city names
+    if city in _SP_CAPITAL:
+        return False
+
+    # Known SP capital orgs (even if city is missing/odd)
+    if any(org in company for org in _SP_CAPITAL_ORGS):
+        return False
+
+    # City in SP state but not capital → reject
+    return True
 
 
 def _score(job: dict) -> tuple[int, bool]:

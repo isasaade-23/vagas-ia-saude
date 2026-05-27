@@ -1,4 +1,5 @@
 import re
+import unicodedata
 import requests
 import logging
 from bs4 import BeautifulSoup
@@ -43,11 +44,22 @@ def _scrape_search(cargo_slug: str, cargo_label: str) -> list[dict]:
 
             title = f"Concurso {cargo_label} — {org}"
 
+            # Parse "City/STATE - Org" pattern
+            loc_match = re.match(r"^([^/(]+)/([A-Z]{2})\b", org)
+            if loc_match:
+                city  = loc_match.group(1).strip()
+                state = loc_match.group(2)
+            else:
+                city  = ""
+                state = ""
+
             jobs.append({
                 "id": f"concurso_{abs(hash(full_url))}",
                 "title": title,
                 "company": org,
-                "location": "São Paulo, SP",
+                "location": f"{city}, {state}" if city else org[:60],
+                "city": city,
+                "state": state,
                 "remote": False,
                 "url": full_url,
                 "source": "Aprovaconcursos",
