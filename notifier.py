@@ -82,6 +82,10 @@ def send(jobs: list[dict]) -> None:
             logger.info(f"Enviados {len(batch)} embeds ao Discord")
         except Exception as e:
             logger.error(f"Erro ao enviar ao Discord: {e}")
+            try:
+                logger.error(f"Resposta Discord: {resp.text[:500]}")
+            except Exception:
+                pass
 
 
 def send_summary(total_new: int, total_seen: int) -> None:

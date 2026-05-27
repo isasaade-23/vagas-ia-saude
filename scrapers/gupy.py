@@ -1,3 +1,4 @@
+import re
 import requests
 import time
 import logging
@@ -46,6 +47,10 @@ def _fetch_gupy_portal(keyword: str, limit: int = 20) -> list[dict]:
     return jobs
 
 
+def _strip_html(html: str) -> str:
+    return re.sub(r"<[^>]+>", " ", html or "")[:800]
+
+
 def _normalize(job: dict) -> dict:
     company = job.get("careerPageName", "") or job.get("company", {}).get("name", "")
     return {
@@ -57,6 +62,9 @@ def _normalize(job: dict) -> dict:
         "url": job.get("jobUrl", ""),
         "source": "Gupy",
         "type": "corporativa",
+        "published_date": job.get("publishedDate", ""),
+        "deadline": job.get("applicationDeadline") or "",
+        "description": _strip_html(job.get("description", "")),
     }
 
 
