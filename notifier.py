@@ -11,6 +11,10 @@ COLOR_CONCURSO = 0x9B59B6   # roxo — concurso público
 COLOR_NORMAL = 0x0099FF     # azul — vaga corporativa normal
 
 
+def _safe(text: str, limit: int) -> str:
+    return (text or "—")[:limit]
+
+
 def _build_embed(job: dict) -> dict:
     title = job["title"]
     company = job["company"]
@@ -23,29 +27,30 @@ def _build_embed(job: dict) -> dict:
 
     if is_priority:
         color = COLOR_PRIORITY
-        prefix = "⭐ PRIORITÁRIA"
+        prefix = "PRIORITARIA"
     elif job_type == "concurso":
         color = COLOR_CONCURSO
-        prefix = "📋 CONCURSO"
+        prefix = "CONCURSO"
     else:
         color = COLOR_NORMAL
-        prefix = "💼 Vaga"
+        prefix = "Vaga"
 
-    remote_tag = " 🌐 Remoto" if job.get("remote") else ""
+    remote_tag = " [Remoto]" if job.get("remote") else ""
     fields = [
-        {"name": "Empresa", "value": company, "inline": True},
-        {"name": "Local", "value": f"{location}{remote_tag}", "inline": True},
-        {"name": "Fonte", "value": source, "inline": True},
+        {"name": "Empresa", "value": _safe(company, 1024), "inline": True},
+        {"name": "Local", "value": _safe(f"{location}{remote_tag}", 1024), "inline": True},
+        {"name": "Fonte", "value": _safe(source, 1024), "inline": True},
     ]
 
     embed = {
-        "title": f"{prefix}: {title[:200]}",
+        "title": _safe(f"[{prefix}] {title}", 256),
         "color": color,
         "fields": fields,
-        "footer": {"text": f"Score de relevância: {score}"},
+        "footer": {"text": f"Relevancia: {score}"},
     }
-    if url:
-        embed["url"] = url
+    # Only include URL if it's a valid absolute URL
+    if url and url.startswith("http"):
+        embed["url"] = url[:512]
 
     return embed
 
@@ -68,8 +73,7 @@ def send(jobs: list[dict]) -> None:
     # Discord allows max 10 embeds per message
     for batch in _chunk(embeds, 10):
         payload = {
-            "username": "VagasBot IA Saúde",
-            "avatar_url": "https://cdn-icons-png.flaticon.com/512/2037/2037565.png",
+            "username": "VagasBot IA Saude",
             "embeds": batch,
         }
         try:

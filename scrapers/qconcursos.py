@@ -1,102 +1,60 @@
+import re
 import requests
 import logging
 from bs4 import BeautifulSoup
-from config import CONCURSO_KEYWORDS
 
 logger = logging.getLogger(__name__)
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept-Language": "pt-BR,pt;q=0.9",
 }
 
-# QConcursos search URLs for health + SP
-SEARCH_URLS = [
-    "https://www.qconcursos.com/concursos-publicos/concursos?i[states][]=SP&i[categories][]=saude",
-    "https://www.qconcursos.com/concursos-publicos/concursos?i[states][]=SP&i[categories][]=educacao",
+BASE = "https://www.aprovaconcursos.com.br"
+
+SEARCHES = [
+    ("professor",    "Professor"),
+    ("pesquisador",  "Pesquisador"),
+    ("epidemiolog",  "Epidemiologista"),
+    ("nutricionista","Nutricionista"),
 ]
 
 
-def _matches_profile(text: str) -> bool:
-    text_lower = text.lower()
-    return any(kw in text_lower for kw in CONCURSO_KEYWORDS)
-
-
-def _scrape_qconcursos_page(url: str) -> list[dict]:
+def _scrape_search(cargo_slug: str, cargo_label: str) -> list[dict]:
+    url = f"{BASE}/concursos/?estado=SP&cargo={cargo_slug}"
     jobs = []
     try:
         resp = requests.get(url, headers=HEADERS, timeout=20)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "lxml")
 
-        cards = soup.select("div.contest-card, article.contest-item, li.contest")
-        if not cards:
-            # fallback: search for links with contest data
-            cards = soup.select("a[href*='/concursos-publicos/']")
-
+        cards = soup.select('a[href*="/concursos/"][class*="grid"]')
         for card in cards:
-            text = card.get_text(" ", strip=True)
-            href = card.get("href", "") or (card.select_one("a") or {}).get("href", "")
-
-            if not _matches_profile(text):
+            href = card.get("href", "")
+            if not href:
                 continue
+            full_url = BASE + href if href.startswith("/") else href
+            text = card.get_text(" ", strip=True)
 
-            title = ""
-            title_el = card.select_one("h2, h3, .title, .name, strong")
-            if title_el:
-                title = title_el.get_text(strip=True)
-            elif isinstance(card.get("href"), str):
-                title = text[:120]
-            if not title:
-                title = text[:120]
+            # Extract organisation name from card text
+            match = re.search(r"C[oó]digo\s+\d+\s+(.+)", text)
+            org = match.group(1).strip() if match else text[-80:].strip()
 
-            org_el = card.select_one(".organization, .org, .banca, .entity")
-            company = org_el.get_text(strip=True) if org_el else "Concurso Público SP"
-
-            url_full = href if href.startswith("http") else f"https://www.qconcursos.com{href}"
+            title = f"Concurso {cargo_label} — {org}"
 
             jobs.append({
-                "id": f"qconcursos_{abs(hash(url_full))}",
+                "id": f"concurso_{abs(hash(full_url))}",
                 "title": title,
-                "company": company,
+                "company": org,
                 "location": "São Paulo, SP",
                 "remote": False,
-                "url": url_full,
-                "source": "QConcursos",
+                "url": full_url,
+                "source": "Aprovaconcursos",
                 "type": "concurso",
             })
     except Exception as e:
-        logger.warning(f"QConcursos scrape error ({url}): {e}")
-    return jobs
-
-
-def _scrape_diario_oficial() -> list[dict]:
-    """Fallback: Diário Oficial SP RSS for professor/researcher openings."""
-    jobs = []
-    rss_url = "https://www.imprensaoficial.com.br/rss/rss.aspx?portal=poder_executivo"
-    try:
-        resp = requests.get(rss_url, headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "xml")
-        for item in soup.select("item")[:30]:
-            title = item.find("title")
-            link = item.find("link")
-            desc = item.find("description")
-            if not title:
-                continue
-            text = (title.get_text() + " " + (desc.get_text() if desc else "")).lower()
-            if _matches_profile(text):
-                jobs.append({
-                    "id": f"doesp_{abs(hash(link.get_text() if link else title.get_text()))}",
-                    "title": title.get_text(strip=True),
-                    "company": "Diário Oficial SP",
-                    "location": "São Paulo, SP",
-                    "remote": False,
-                    "url": link.get_text(strip=True) if link else "",
-                    "source": "Diário Oficial SP",
-                    "type": "concurso",
-                })
-    except Exception as e:
-        logger.warning(f"Diário Oficial RSS error: {e}")
+        logger.warning(f"Aprovaconcursos error ({cargo_slug}): {e}")
     return jobs
 
 
@@ -104,16 +62,11 @@ def scrape() -> list[dict]:
     results = []
     seen_ids: set[str] = set()
 
-    for url in SEARCH_URLS:
-        for job in _scrape_qconcursos_page(url):
+    for slug, label in SEARCHES:
+        for job in _scrape_search(slug, label):
             if job["id"] not in seen_ids:
                 seen_ids.add(job["id"])
                 results.append(job)
 
-    for job in _scrape_diario_oficial():
-        if job["id"] not in seen_ids:
-            seen_ids.add(job["id"])
-            results.append(job)
-
-    logger.info(f"QConcursos/DOESP: {len(results)} vagas coletadas")
+    logger.info(f"Concursos (aprovaconcursos): {len(results)} vagas coletadas")
     return results
